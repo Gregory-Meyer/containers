@@ -8,6 +8,7 @@
 #include <iterator>
 #include <optional>
 #include <type_traits>
+#include <utility>
 
 namespace gregjm::containers {
 
@@ -37,6 +38,26 @@ noexcept {
 
     return 1ull << (occupied_zeros);
 }
+
+template <typename T>
+void adl_swap(T &lhs, T &rhs) noexcept(std::is_nothrow_swappable_v<T>) {
+    using std::swap;
+
+    swap(lhs, rhs);
+}
+
+// equivalent to std::true_type if T is a hasher for U
+template <typename T, typename U>
+struct IsHasherFor
+: public std::conditional_t<
+    std::is_invocable_v<T, const U&>
+    && std::is_same_v<std::invoke_result_t<T, const U&>, std::size_t>,
+    std::true_type, std::false_type
+> { };
+
+// == true if T is a hasher for U
+template <typename T, typename U>
+constexpr inline bool IS_HASHER_FOR = IsHasherFor<T, U>::value;
 
 } // namespace gregjm::containers
 
