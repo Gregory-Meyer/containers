@@ -41,6 +41,8 @@ using RangeIteratorT = typename RangeIterator<T>::type;
 
 template <typename I, std::enable_if_t<IS_ITERATOR<I>, int> = 0>
 class Range {
+    static constexpr inline bool HAS_SIZE = IS_FORWARD_ITERATOR<I>;
+
 public:
     using difference_type = IteratorDifferenceTypeT<I>;
     using size_type = difference_type;
@@ -59,12 +61,15 @@ public:
     }
 
     constexpr bool has_size() const noexcept {
-        return IS_FORWARD_ITERATOR<I>;
+        return HAS_SIZE;
     }
 
-    template <std::enable_if_t<IS_FORWARD_ITERATOR<I>, int> = 0>
     constexpr size_type size() const noexcept {
-        return static_cast<size_type>(std::distance(begin_, end_));
+        if constexpr (!HAS_SIZE) {
+            return 0;
+        } else {
+            return static_cast<size_type>(std::distance(begin(), end()));
+        }
     }
 
 private:
@@ -94,11 +99,21 @@ template <typename I, typename P,
           > = 0>
 class FilterIterator {
 public:
+    static constexpr inline bool IS_FORWARD_ITERATOR =
+        std::is_default_constructible_v<I>
+        && std::is_default_constructible_v<P>
+        && gregjm::containers::utility::IS_FORWARD_ITERATOR<I>
+        && (std::is_same_v<IteratorValueTypeT<I>&, IteratorReferenceT<I>>
+            || std::is_same_v<const IteratorValueTypeT<I>&,
+                              IteratorReferenceT<I>>);
+
     using value_type = IteratorValueTypeT<I>;
     using difference_type = IteratorDifferenceTypeT<I>;
     using reference = IteratorReferenceT<I>;
     using pointer = IteratorPointerT<I>;
-    using iterator_category = std::input_iterator_tag;
+    using iterator_category = std::conditional_t<IS_FORWARD_ITERATOR, std::forward_iterator_tag, std::input_iterator_tag>;
+
+    FilterIterator() = default;
 
     constexpr FilterIterator(I current, I end, P predicate)
     : base_{ std::move(current) }, end_{ std::move(end) },
@@ -115,8 +130,10 @@ public:
     }
 
     constexpr FilterIterator& operator++() {
-        ++base_;
-        validate();
+        if (base_ != end_) {
+            ++base_;
+            validate();          
+        }
 
         return *this;
     }
@@ -141,7 +158,7 @@ public:
 
 private:
     constexpr void validate() {
-        for (; !std::invoke(pred_, *base_) && base_ != end_; ++base_) { }
+        for (; base_ != end_ && !std::invoke(pred_, *base_) ; ++base_) { }
     }
 
     I base_;
@@ -156,7 +173,12 @@ template <typename I, typename P,
               int
           > = 0>
 struct Filter {
+    static constexpr inline bool HAS_SIZE = IS_FORWARD_ITERATOR<I>;
+
 public:
+    using difference_type = IteratorDifferenceTypeT<I>;
+    using size_type = difference_type;
+
     constexpr Filter(I first, I last, P predicate)
     : begin_{ std::move(first) }, end_{ std::move(last) },
       pred_{ std::move(predicate) } { }
@@ -170,7 +192,15 @@ public:
     }
 
     constexpr bool has_size() const noexcept {
-        return false;
+        return HAS_SIZE;
+    }
+
+    constexpr size_type size() const noexcept {
+        if constexpr (!HAS_SIZE) {
+            return 0;
+        } else {
+            return static_cast<size_type>(std::distance(begin(), end()));
+        }
     }
 
 private:
