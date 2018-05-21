@@ -18,7 +18,17 @@ template <typename Key, typename Hash = std::hash<Key>,
           typename HashPolicy = set::LinearProbe<Key>>
 class Set {
 public:
+    using value_type = Key;
+    using reference = Key&;
+    using const_reference = const Key&;
+    using iterator = typename HashPolicy::IteratorT;
+    using const_iterator = iterator;
     using size_type = std::size_t;
+    using difference_type = IteratorDifferenceType<iterator>;
+
+    using key_type = Key;
+    using hasher = Hash;
+    using key_equal = KeyEqual;
 
     Set() = default;
 
@@ -41,7 +51,7 @@ public:
     }
 
     [[nodiscard]] size_type size() const noexcept {
-        return static_cast<size_type>(filled_buckets_);
+        return static_cast<size_type>(policy_.num_occupied());
     }
 
     [[nodiscard]] size_type capacity() const noexcept {
@@ -54,6 +64,22 @@ public:
 
     bool insert(Key &&key) {
         return emplace(key);
+    }
+
+    const_iterator begin() const noexcept {
+        return policy_.begin();
+    }
+
+    const_iterator cbegin() const noexcept {
+        return begin();
+    }
+
+    const_iterator end() const noexcept {
+        return policy_.end();
+    }
+
+    const_iterator cend() const noexcept {
+        return end();
     }
 
     template <
@@ -98,7 +124,6 @@ public:
         }
 
         if (policy_.insert(std::move(key), hash) != policy_.buckets().end()) {
-            ++filled_buckets_;
             return true;
         }
 
@@ -109,7 +134,6 @@ public:
         const std::size_t hash = hash_key(key);
 
         if (policy_.erase(key, hash, equal_) != policy_.buckets().end()) {
-            --filled_buckets_;
             return true;
         }
 
@@ -157,7 +181,7 @@ private:
 
     // realloc if empty or load factor > 1/2
     bool should_realloc() {
-        return empty() || capacity() / (size() + 1) < 2;
+        return buckets_.empty() || capacity() / (size() + 1) < 2;
     }
 
     void realloc_and_move(size_type new_capacity) {
@@ -193,7 +217,6 @@ private:
     }
 
     std::vector<BucketT, AllocT> buckets_;
-    size_type filled_buckets_ = 0;
 
     Hash hasher_{ };
     BucketEqualT equal_{ KeyEqual{ } };

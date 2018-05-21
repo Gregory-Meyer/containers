@@ -3,9 +3,11 @@
 
 #include "set/tombstone_bucket.hpp"
 
+#include <cstddef>
 #include <algorithm>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <type_traits>
 
 #include <gsl/gsl>
@@ -19,11 +21,100 @@ public:
     using BucketT = TombstoneBucket<T>;
     using SpanT = gsl::span<BucketT>;
 
+    class Iterator {
+    public:
+        friend LinearProbe;
+
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using reference = const T&;
+        using pointer = const T*;
+        using iterator_category = std::forward_iterator_tag;
+
+        Iterator() = default;
+
+        reference operator*() const {
+            return base_->unwrap();
+        }
+
+        pointer operator->() const {
+            return std::addressof(**this);
+        }
+
+        Iterator& operator++() {
+            if (traversed_ < num_occupied_ - 1 && base_ != end_) {
+                ++traversed_;
+                ++base_;
+                validate();
+            } else if (traversed_ >= num_occupied_ - 1) {
+                base_ = end_;
+            }
+
+            return *this;
+        }
+
+        Iterator operator++(int) {
+            const auto to_return = *this;
+
+            ++(*this);
+
+            return to_return;
+        }
+
+        friend bool operator==(const Iterator &lhs,
+                               const Iterator &rhs) noexcept {
+            return lhs.base_ == rhs.base_;
+        }
+
+        friend bool operator!=(const Iterator &lhs,
+                               const Iterator &rhs) noexcept {
+            return lhs.base_ != rhs.base_;
+        }
+
+    private:
+        using BaseT = typename SpanT::const_iterator;
+
+        Iterator(const BaseT current, const BaseT end,
+                 const std::size_t occupied) noexcept
+        : base_{ current }, end_{ end },  num_occupied_{ occupied } { }
+
+        void validate() noexcept {
+            for (; base_ != end_ && !base_->has_value(); ++base_) { }
+        }
+
+        BaseT base_;
+        BaseT end_;
+        std::size_t traversed_ = 0;
+        std::size_t num_occupied_;
+    };
+
+    using IteratorT = Iterator;
+
     explicit LinearProbe(const SpanT buckets) noexcept
     : buckets_{ buckets } { }
 
     const SpanT& buckets() const noexcept {
         return buckets_;
+    }
+
+    Iterator begin() const noexcept {
+        return { buckets_.cbegin(), buckets_.cend(), num_occupied() };
+    }
+
+    Iterator cbegin() const noexcept {
+        return begin();
+    }
+
+    Iterator end() const noexcept {
+        return { buckets_.cend(), buckets_.cend(), num_occupied() };
+    }
+
+    Iterator cend() const noexcept {
+        return end();
+    }
+
+    std::size_t num_occupied() const noexcept {
+        return num_occupied_;
     }
 
     template <
@@ -82,7 +173,7 @@ public:
     }
 
     typename SpanT::iterator
-    insert(T &&value, const std::size_t hash) const {
+    insert(T &&value, const std::size_t hash) {
         if (buckets_.empty()) {
             return buckets_.end();
         }
@@ -94,6 +185,7 @@ public:
         }
 
         insert_iter->emplace(std::move(value));
+        ++num_occupied_;
         return insert_iter;
     }
 
@@ -104,7 +196,7 @@ public:
                         int> = 0
     >
     typename SpanT::iterator
-    erase(Key &&key, const std::size_t hash, Equal &&equal) const {
+    erase(Key &&key, const std::size_t hash, Equal &&equal) {
         if (buckets_.empty()) {
             return buckets_.end();
         }
@@ -118,12 +210,13 @@ public:
         }
 
         delete_iter->set_deleted();
+        --num_occupied_;
         return delete_iter;
     }
 
     template <typename Hasher>
     SpanT move_to(Hasher &&hasher, SpanT new_buckets) {
-        const LinearProbe new_policy{ new_buckets };
+        LinearProbe new_policy{ new_buckets };
 
         for (auto &bucket : buckets_) {
             if (!bucket.has_value()) {
@@ -187,6 +280,7 @@ private:
     }
 
     SpanT buckets_;
+    std::size_t num_occupied_ = 0;
 };
     
 } // namespace gregjm::containers::set
