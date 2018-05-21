@@ -103,3 +103,15 @@ TEST_CASE("heterogeneous lookup", "[Set]") {
     CHECK(strings.contains("baz"sv, hasher));
     CHECK_FALSE(strings.contains("ayy"sv, hasher));
 }
+
+TEST_CASE("Set iteration", "[Set]") {
+    const Set<int> num_set{ 0, 1, 2, 3, 4, 5, 6, 7 };
+
+    std::vector<int> num_vec(num_set.begin(), num_set.end());
+    std::sort(num_vec.begin(), num_vec.end());
+
+    const std::array<int, 8> num_vec_exp = { { 0, 1, 2, 3, 4, 5, 6, 7 } };
+
+    CHECK(num_vec.size() == num_set.size());
+    CHECK(std::equal(num_vec.cbegin(), num_vec.cend(), num_vec_exp.cbegin()));
+}
