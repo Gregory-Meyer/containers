@@ -12,16 +12,44 @@
 namespace gregjm::containers {
 inline namespace utility {
 
+template <typename T>
+decltype(auto) adl_begin(T &&t) {
+    using std::begin;
+
+    return begin(std::forward<T>(t));
+}
+
+template <typename T>
+decltype(auto) adl_cbegin(T &&t) {
+    using std::cbegin;
+
+    return cbegin(std::forward<T>(t));
+}
+
+template <typename T>
+decltype(auto) adl_end(T &&t) {
+    using std::end;
+
+    return end(std::forward<T>(t));
+}
+
+template <typename T>
+decltype(auto) adl_cend(T &&t) {
+    using std::cend;
+
+    return cend(std::forward<T>(t));
+}
+
 template <typename T, typename = void>
 struct IsRange : public std::false_type { };
 
 template <typename T>
 struct IsRange<
     T,
-    std::void_t<decltype(std::begin(std::declval<T>())),
-                decltype(std::end(std::declval<T>()))>
+    std::void_t<decltype(adl_begin(std::declval<T>())),
+                decltype(adl_end(std::declval<T>()))>
 > : public std::conditional_t<
-    IS_ITERATOR<decltype(std::begin(std::declval<T>()))>,
+    IS_ITERATOR<decltype(adl_begin(std::declval<T>()))>,
     std::true_type, std::false_type
 > { };
 
@@ -33,7 +61,7 @@ struct RangeIterator { };
 
 template <typename T>
 struct RangeIterator<T, true> {
-    using type = decltype(std::begin(std::declval<T>()));
+    using type = decltype(adl_begin(std::declval<T>()));
 };
 
 template <typename T>
@@ -85,10 +113,10 @@ noexcept(std::is_nothrow_move_constructible_v<I>) {
 
 template <typename R, std::enable_if_t<IS_RANGE<R>, int> = 0>
 constexpr Range<RangeIteratorT<R>> make_range(R &&range)
-noexcept(noexcept(make_range(std::begin(std::forward<R>(range)),
-                             std::end(std::forward<R>(range))))) {
-    return make_range(std::begin(std::forward<R>(range)),
-                      std::end(std::forward<R>(range)));
+noexcept(noexcept(make_range(adl_begin(std::forward<R>(range)),
+                             adl_end(std::forward<R>(range))))) {
+    return make_range(adl_begin(std::forward<R>(range)),
+                      adl_end(std::forward<R>(range)));
 }
 
 template <typename I, typename P,
