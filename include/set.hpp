@@ -170,6 +170,13 @@ public:
         return static_cast<double>(size()) / static_cast<double>(capacity());
     }
 
+    void swap(Set &other) {
+        adl_swap(buckets_, other.buckets_);
+        adl_swap(hasher_, other.hasher_);
+        adl_swap(equal_, other.equal_);
+        adl_swap(policy_, other.policy_);
+    }
+
 private:
     using KeyAllocT = Allocator;
     using KeyTraitsT = std::allocator_traits<KeyAllocT>;
@@ -222,6 +229,11 @@ private:
     BucketEqualT equal_{ KeyEqual{ } };
     HashPolicy policy_{ span() };
 };
+
+template <typename K, typename H, typename E, typename A, typename P>
+void swap(Set<K, H, E, A, P> &lhs, Set<K, H, E, A, P> &rhs) {
+    lhs.swap(rhs);
+}
 
 } // namespace gregjm::containers
 

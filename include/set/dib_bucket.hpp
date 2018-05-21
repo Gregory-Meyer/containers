@@ -1,6 +1,8 @@
 #ifndef GREGJM_CONTAINERS_SET_DIB_BUCKET_HPP
 #define GREGJM_CONTAINERS_SET_DIB_BUCKET_HPP
 
+#include "utility.hpp"
+
 #include <optional>
 #include <tuple>
 #include <utility>
@@ -63,9 +65,22 @@ public:
         data_.reset();
     }
 
+    void swap(DibBucket &other)
+    noexcept(std::is_nothrow_swappable_v<UnderlyingT>) {
+        adl_swap(data_, other.data_);
+    }
+
 private:
-    std::optional<std::pair<T, std::size_t>> data_ = std::nullopt;
+    using UnderlyingT = std::optional<std::pair<T, std::size_t>>;
+
+    UnderlyingT data_ = std::nullopt;
 };
+
+template <typename T>
+void swap(DibBucket<T> &lhs, DibBucket<T> &rhs)
+noexcept(noexcept(lhs.swap(rhs))) {
+    lhs.swap(rhs);
+}
 
 } // namespace gregjm::containers::set
 

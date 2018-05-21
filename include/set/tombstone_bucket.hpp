@@ -1,6 +1,8 @@
 #ifndef GREGJM_CONTAINERS_SET_TOMBSTONE_BUCKET_HPP
 #define GREGJM_CONTAINERS_SET_TOMBSTONE_BUCKET_HPP
 
+#include "utility.hpp"
+
 #include <functional>
 #include <optional>
 #include <utility>
@@ -74,13 +76,26 @@ public:
         data_.template emplace<DeletedBucket>();
     }
 
+    void swap(TombstoneBucket &other)
+    noexcept(std::is_nothrow_swappable_v<UnderlyingT>) {
+        adl_swap(data_, other.data_);
+    }
+
 private:
     class EmptyBucket { };
 
     class DeletedBucket { }; // tombstone
 
-    std::variant<EmptyBucket, DeletedBucket, T> data_ = EmptyBucket{ }; 
+    using UnderlyingT = std::variant<EmptyBucket, DeletedBucket, T>;
+
+    UnderlyingT data_ = EmptyBucket{ }; 
 };
+
+template <typename T>
+void swap(TombstoneBucket<T> &lhs, TombstoneBucket<T> &rhs)
+noexcept(noexcept(lhs.swap(rhs))) {
+    lhs.swap(rhs);
+}
 
 } // namespace gregjm::containers::set
 

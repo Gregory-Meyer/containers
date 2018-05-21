@@ -1,6 +1,8 @@
 #ifndef GREGJM_CONTAINERS_SET_BUCKET_EQUAL_HPP
 #define GREGJM_CONTAINERS_SET_BUCKET_EQUAL_HPP
 
+#include "utility.hpp"
+
 #include <functional>
 #include <type_traits>
 
@@ -137,8 +139,18 @@ struct BucketEqual {
         }
     }
 
+    void swap(BucketEqual &other) noexcept(std::is_nothrow_swappable_v<Equal>) {
+        adl_swap(equals, other.equals);
+    }
+
     Equal equals;
 };
+
+template <typename Bucket, typename Equal>
+void swap(BucketEqual<Bucket, Equal> &lhs, BucketEqual<Bucket, Equal> &rhs)
+noexcept(noexcept(lhs.swap(rhs))) {
+    lhs.swap(rhs);
+}
 
 } // namespace gregjm::containers::set
 
