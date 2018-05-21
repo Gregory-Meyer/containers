@@ -3,6 +3,9 @@
 #include "utility.hpp"
 
 #include <algorithm>
+#include <array>
+#include <iterator>
+#include <sstream>
 
 using namespace gregjm::containers;
 
@@ -46,12 +49,21 @@ TEST_CASE("Range usage with std::vector", "[Range][utility.hpp]") {
     const auto f1 = make_filter(r1, [](const auto i) { return i % 2 == 0; });
     static constexpr int f1_exp[] = { 0, 2 };
 
+    CHECK(f1.has_size());
+    CHECK(f1.size() == 2);
+
     const auto f2 = make_filter(r2.begin(), r2.end(), &is_odd);
     static constexpr int f2_exp[] = { 1, 3 };
+
+    CHECK(f2.has_size());
+    CHECK(f2.size() == 2);
 
     const auto f3 = make_filter(std::begin(r3), std::end(r3),
                                 [](auto) { return true; });
     static constexpr int f3_exp[] = { 0, 1, 2, 3};
+    
+    CHECK(f3.has_size());
+    CHECK(f3.size() == 4);
 
     const std::vector<int> n1(f1.begin(), f1.end());
     const std::vector<int> n2(std::begin(f2), std::end(f2));
@@ -60,4 +72,28 @@ TEST_CASE("Range usage with std::vector", "[Range][utility.hpp]") {
     CHECK(std::equal(n1.begin(), n1.end(), std::begin(f1_exp)));
     CHECK(std::equal(n2.begin(), n2.end(), std::begin(f2_exp)));
     CHECK(std::equal(n3.begin(), n3.end(), std::begin(f3_exp)));
+}
+
+TEST_CASE("Range usage with istreams", "[Range][utility.hpp]") {
+    std::istringstream iss{ "0 1 2 3" };
+
+    const std::istream_iterator<int> first{ iss };
+    const std::istream_iterator<int> last{ };
+
+    const auto range = make_range(first, last);
+
+    CHECK_FALSE(range.has_size());
+
+    const auto even =
+        make_filter(range, [](const auto x) { return x % 2 == 0; });
+    const auto odd = make_filter(first, last, &is_odd);
+
+    CHECK_FALSE(even.has_size());
+    CHECK_FALSE(odd.has_size());
+
+    static constexpr std::array<int, 2> even_exp = { { 0, 2 } };
+    CHECK(std::equal(even.begin(), even.end(), even_exp.cbegin()));
+
+    static constexpr std::array<int, 0> odd_exp;
+    CHECK(std::equal(odd.begin(), odd.end(), odd_exp.cbegin()));
 }
