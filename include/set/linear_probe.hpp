@@ -2,6 +2,7 @@
 #define GREGJM_CONTAINERS_SET_LINEAR_PROBE_HPP
 
 #include "set/tombstone_bucket.hpp"
+#include "utility.hpp"
 
 #include <cstddef>
 #include <algorithm>
@@ -14,81 +15,83 @@
 
 namespace gregjm::containers::set {
 
+template <typename T>
+class LinearProbe;
+
+template <typename T>
+class LinearProbeIterator {
+    friend LinearProbe<T>;
+
+    using value_type = T;
+    using difference_type = std::ptrdiff_t;
+    using reference = const T&;
+    using pointer = const T*;
+    using iterator_category = std::forward_iterator_tag;
+
+    LinearProbeIterator() = default;
+
+    reference operator*() const {
+        return base_->unwrap();
+    }
+
+    pointer operator->() const {
+        return std::addressof(**this);
+    }
+
+    LinearProbeIterator& operator++() {
+        if (traversed_ < num_occupied_ - 1 && base_ != end_) {
+            ++traversed_;
+            ++base_;
+            validate();
+        } else if (traversed_ >= num_occupied_ - 1) {
+            base_ = end_;
+        }
+
+        return *this;
+    }
+
+    LinearProbeIterator operator++(int) {
+        const auto to_return = *this;
+
+        ++(*this);
+
+        return to_return;
+    }
+
+    friend bool operator==(const LinearProbeIterator &lhs,
+                           const LinearProbeIterator &rhs) noexcept {
+        return lhs.base_ == rhs.base_;
+    }
+
+    friend bool operator!=(const LinearProbeIterator &lhs,
+                           const LinearProbeIterator &rhs) noexcept {
+        return lhs.base_ != rhs.base_;
+    }
+
+private:
+    using UnderlyingT = typename LinearProbe<T>::SpanT::iterator;
+
+    LinearProbeIterator(const UnderlyingT current, const UnderlyingT end,
+                        const std::size_t occupied) noexcept
+    : base_{ current }, end_{ end },  num_occupied_{ occupied } { }
+
+    void validate() noexcept {
+        for (; base_ != end_ && !base_->has_value(); ++base_) { }
+    }
+
+    UnderlyingT base_;
+    UnderlyingT end_;
+    std::size_t traversed_ = 0;
+    std::size_t num_occupied_;
+};
+
 // linear probing hashing policy
 template <typename T>
 class LinearProbe {
 public:
     using BucketT = TombstoneBucket<T>;
     using SpanT = gsl::span<BucketT>;
-
-    class Iterator {
-    public:
-        friend LinearProbe;
-
-        using value_type = T;
-        using difference_type = std::ptrdiff_t;
-        using reference = const T&;
-        using pointer = const T*;
-        using iterator_category = std::forward_iterator_tag;
-
-        Iterator() = default;
-
-        reference operator*() const {
-            return base_->unwrap();
-        }
-
-        pointer operator->() const {
-            return std::addressof(**this);
-        }
-
-        Iterator& operator++() {
-            if (traversed_ < num_occupied_ - 1 && base_ != end_) {
-                ++traversed_;
-                ++base_;
-                validate();
-            } else if (traversed_ >= num_occupied_ - 1) {
-                base_ = end_;
-            }
-
-            return *this;
-        }
-
-        Iterator operator++(int) {
-            const auto to_return = *this;
-
-            ++(*this);
-
-            return to_return;
-        }
-
-        friend bool operator==(const Iterator &lhs,
-                               const Iterator &rhs) noexcept {
-            return lhs.base_ == rhs.base_;
-        }
-
-        friend bool operator!=(const Iterator &lhs,
-                               const Iterator &rhs) noexcept {
-            return lhs.base_ != rhs.base_;
-        }
-
-    private:
-        using BaseT = typename SpanT::const_iterator;
-
-        Iterator(const BaseT current, const BaseT end,
-                 const std::size_t occupied) noexcept
-        : base_{ current }, end_{ end },  num_occupied_{ occupied } { }
-
-        void validate() noexcept {
-            for (; base_ != end_ && !base_->has_value(); ++base_) { }
-        }
-
-        BaseT base_;
-        BaseT end_;
-        std::size_t traversed_ = 0;
-        std::size_t num_occupied_;
-    };
-
-    using IteratorT = Iterator;
+    using IteratorT = LinearProbeIterator<T>;
 
     explicit LinearProbe(const SpanT buckets) noexcept
     : buckets_{ buckets } { }
@@ -97,19 +100,19 @@ public:
         return buckets_;
     }
 
-    Iterator begin() const noexcept {
+    IteratorT begin() const noexcept {
         return { buckets_.cbegin(), buckets_.cend(), num_occupied() };
     }
 
-    Iterator cbegin() const noexcept {
+    IteratorT cbegin() const noexcept {
         return begin();
     }
 
-    Iterator end() const noexcept {
+    IteratorT end() const noexcept {
         return { buckets_.cend(), buckets_.cend(), num_occupied() };
     }
 
-    Iterator cend() const noexcept {
+    IteratorT cend() const noexcept {
         return end();
     }
 
@@ -214,7 +217,8 @@ public:
         return delete_iter;
     }
 
-    template <typename Hasher>
+    template <typename Hasher,
+              std::enable_if_t<IS_HASHER_FOR<Hasher, T>, int> = 0>
     SpanT move_to(Hasher &&hasher, SpanT new_buckets) {
         LinearProbe new_policy{ new_buckets };
 
@@ -231,12 +235,14 @@ public:
             bucket.set_deleted();
         }
 
-        {
-            using std::swap;
-            swap(buckets_, new_buckets);
-        }
+        adl_swap(buckets_, new_buckets);
 
         return new_buckets;
+    }
+
+    void swap(LinearProbe &other) noexcept {
+        adl_swap(buckets_, other.buckets_);
+        adl_swap(num_occupied_, other.num_occupied_);
     }
 
 private:
@@ -282,6 +288,11 @@ private:
     SpanT buckets_;
     std::size_t num_occupied_ = 0;
 };
+
+template <typename T>
+void swap(LinearProbe<T> &lhs, LinearProbe<T> &rhs) noexcept {
+    lhs.swap(rhs);
+}
     
 } // namespace gregjm::containers::set
 
