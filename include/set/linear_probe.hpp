@@ -13,10 +13,10 @@
 namespace gregjm::containers::set {
 
 // linear probing hashing policy
-template <typename Value>
+template <typename T>
 class LinearProbe {
 public:
-    using BucketT = TombstoneBucket<Value>;
+    using BucketT = TombstoneBucket<T>;
     using SpanT = gsl::span<BucketT>;
 
     explicit LinearProbe(const SpanT buckets) noexcept
@@ -28,8 +28,8 @@ public:
 
     template <
         typename Key, typename Equal,
-        std::enable_if_t<std::is_invocable_v<Equal, Key, const Value&>
-                         || std::is_invocable_v<Equal, const Value&, Key>,
+        std::enable_if_t<std::is_invocable_v<Equal, Key, const T&>
+                         || std::is_invocable_v<Equal, const T&, Key>,
                          int> = 0
     >
     typename SpanT::const_iterator
@@ -51,7 +51,7 @@ public:
 
             const auto &value = bucket.unwrap();
 
-            if constexpr (std::is_invocable_v<Equal, Key, const Value&>) {
+            if constexpr (std::is_invocable_v<Equal, Key, const T&>) {
                 return std::invoke(std::forward<Equal>(equal),
                                    std::forward<Key>(key), value);
             } else {
@@ -82,7 +82,7 @@ public:
     }
 
     typename SpanT::iterator
-    insert(Value &&value, const std::size_t hash) const {
+    insert(T &&value, const std::size_t hash) const {
         if (buckets_.empty()) {
             return buckets_.end();
         }
@@ -99,11 +99,9 @@ public:
 
     template <
         typename Key, typename Equal,
-        std::enable_if_t<
-            std::is_invocable_v<Equal, Key, const Value&>
-            || std::is_invocable_v<Equal, const Value&, Key>,
-            int
-        > = 0
+        std::enable_if_t<std::is_invocable_v<Equal, Key, const T&>
+                        || std::is_invocable_v<Equal, const T&, Key>,
+                        int> = 0
     >
     typename SpanT::iterator
     erase(Key &&key, const std::size_t hash, Equal &&equal) const {
@@ -125,14 +123,14 @@ public:
 
     template <typename Hasher>
     SpanT move_to(Hasher &&hasher, SpanT new_buckets) {
-        LinearProbe new_policy(new_buckets);
+        const LinearProbe new_policy{ new_buckets };
 
         for (auto &bucket : buckets_) {
             if (!bucket.has_value()) {
                 continue;
             }
 
-            Value &value = bucket.unwrap();
+            T &value = bucket.unwrap();
             const std::size_t hash =
                 std::invoke(std::forward<Hasher>(hasher), value);
 
