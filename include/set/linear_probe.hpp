@@ -49,7 +49,7 @@ public:
                 return false;
             }
 
-            const auto &value = bucket.get_value().value().get();
+            const auto &value = bucket.unwrap();
 
             if constexpr (std::is_invocable_v<Equal, Key, const Value&>) {
                 return std::invoke(std::forward<Equal>(equal),
@@ -132,7 +132,7 @@ public:
                 continue;
             }
 
-            Value &value = bucket.get_value().value();
+            Value &value = bucket.unwrap();
             const std::size_t hash =
                 std::invoke(std::forward<Hasher>(hasher), value);
 
