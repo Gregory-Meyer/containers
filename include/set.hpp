@@ -25,12 +25,9 @@ public:
     template <
         typename I,
         std::enable_if_t<
-            std::is_base_of_v<
-                std::input_iterator_tag,
-                typename std::iterator_traits<I>::iterator_category
-            > && std::is_constructible_v<
-                Key, typename std::iterator_traits<I>::reference
-            >, int> = 0
+            IS_INPUT_ITERATOR<I>
+            && std::is_constructible_v<Key, IteratorReferenceT<I>
+        >, int> = 0
     >
     Set(const I first, const I last) {
         insert(first, last);
@@ -62,23 +59,18 @@ public:
     template <
         typename I,
         std::enable_if_t<
-            std::is_base_of_v<
-                std::input_iterator_tag,
-                typename std::iterator_traits<I>::iterator_category
-            > && std::is_constructible_v<
-                Key, typename std::iterator_traits<I>::reference
-            >, int> = 0
+            IS_INPUT_ITERATOR<I>
+            && std::is_constructible_v<Key, IteratorReferenceT<I>
+        >, int> = 0
     >
     std::size_t insert(I first, const I last) {
-        const auto maybe_size = range_size(first, last);
-
-        if (maybe_size.has_value()) {
-            reserve(next_power_of_2(size() + maybe_size.value()));
+        if constexpr (const Range r(first, last); r.has_size()) {
+            reserve(next_power_of_2(size() + r.size()));
         }
 
         std::size_t num_inserted = 0;
-        for (; first != last; ++first) {
-            if (insert(*first)) {
+        for (auto &&element : Range(first, last)) {
+            if (insert(element)) {
                 ++num_inserted;
             }
         }
