@@ -73,7 +73,7 @@ class Range {
 
 public:
     using difference_type = IteratorDifferenceTypeT<I>;
-    using size_type = difference_type;
+    using size_type = std::make_unsigned_t<difference_type>;
 
     constexpr Range(I first, I last)
     noexcept(std::is_nothrow_move_constructible_v<I>)
@@ -205,7 +205,7 @@ struct Filter {
 
 public:
     using difference_type = IteratorDifferenceTypeT<I>;
-    using size_type = difference_type;
+    using size_type = std::make_unsigned_t<difference_type>;
 
     constexpr Filter(I first, I last, P predicate)
     : begin_{ std::move(first) }, end_{ std::move(last) },
