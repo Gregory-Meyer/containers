@@ -12,6 +12,13 @@ namespace gregjm::containers::set {
 
 template <typename T>
 class TombstoneBucket {
+private:
+    class EmptyBucket { };
+
+    class DeletedBucket { }; // tombstone
+    
+    using UnderlyingT = std::variant<EmptyBucket, DeletedBucket, T>;
+
 public:
     using ValueT = T;
 
@@ -82,12 +89,6 @@ public:
     }
 
 private:
-    class EmptyBucket { };
-
-    class DeletedBucket { }; // tombstone
-
-    using UnderlyingT = std::variant<EmptyBucket, DeletedBucket, T>;
-
     UnderlyingT data_ = EmptyBucket{ }; 
 };
 
