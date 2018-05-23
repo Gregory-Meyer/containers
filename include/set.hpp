@@ -21,10 +21,14 @@ public:
     using value_type = Key;
     using reference = Key&;
     using const_reference = const Key&;
-    using iterator = typename HashPolicy::IteratorT;
+    using iterator = typename HashPolicy::iterator;
     using const_iterator = iterator;
     using size_type = std::size_t;
     using difference_type = IteratorDifferenceType<iterator>;
+    using allocator_type = Allocator;
+    using pointer = typename std::allocator_traits<Allocator>::pointer;
+    using const_pointer =
+        typename std::allocator_traits<Allocator>::const_pointer;
 
     using key_type = Key;
     using hasher = Hash;
@@ -46,6 +50,26 @@ public:
     explicit Set(const std::initializer_list<Key> list)
     : Set(list.begin(), list.end()) { }
 
+    allocator_type get_allocator() const {
+        return buckets_.get_allocator();
+    }
+
+    iterator begin() const noexcept {
+        return policy_.begin();
+    }
+
+    const_iterator cbegin() const noexcept {
+        return begin();
+    }
+
+    iterator end() const noexcept {
+        return policy_.end();
+    }
+
+    const_iterator cend() const noexcept {
+        return end();
+    }
+
     [[nodiscard]] bool empty() const noexcept {
         return size() == 0;
     }
@@ -54,32 +78,24 @@ public:
         return static_cast<size_type>(policy_.num_occupied());
     }
 
+    [[nodiscard]] size_type max_size() const noexcept {
+        return static_cast<size_type>(buckets_.max_size());
+    }
+
     [[nodiscard]] size_type capacity() const noexcept {
-        return static_cast<size_type>(buckets_.size());
+        return static_cast<size_type>(buckets_.size() / 2);
     }
 
-    bool insert(const Key &key) {
+    void clear() noexcept {
+        policy_.clear();
+    }
+
+    std::pair<iterator, bool> insert(const Key &key) {
         return emplace(key);
     }
 
-    bool insert(Key &&key) {
+    std::pair<iterator, bool> insert(Key &&key) {
         return emplace(key);
-    }
-
-    const_iterator begin() const noexcept {
-        return policy_.begin();
-    }
-
-    const_iterator cbegin() const noexcept {
-        return begin();
-    }
-
-    const_iterator end() const noexcept {
-        return policy_.end();
-    }
-
-    const_iterator cend() const noexcept {
-        return end();
     }
 
     template <
@@ -96,7 +112,7 @@ public:
 
         std::size_t num_inserted = 0;
         for (auto &&element : Range(first, last)) {
-            if (insert(element)) {
+            if (insert(element).second) {
                 ++num_inserted;
             }
         }
@@ -110,64 +126,55 @@ public:
 
     template <typename ...Args,
               std::enable_if_t<std::is_constructible_v<Key, Args...>, int> = 0>
-    bool emplace(Args &&...args) {
+    std::pair<iterator, bool> emplace(Args &&...args) {
         Key key(std::forward<Args>(args)...);
 
         const std::size_t hash = hash_key(key);
 
-        if (policy_.find(key, hash, equal_) != policy_.buckets().cend()) {
-            return false;
+        if (const auto found_iter = policy_.find(key, hash, equal_);
+            found_iter != policy_.cend()) {
+            return { found_iter, false };
         }
 
         if (should_realloc()) {
             realloc_and_move(next_capacity());
         }
 
-        if (policy_.insert(std::move(key), hash) != policy_.buckets().end()) {
-            return true;
+        if (const auto inserted_iter = policy_.insert(std::move(key), hash);
+            inserted_iter != policy_.end()) {
+            return { inserted_iter, true };
         }
 
-        return false;
+        throw std::logic_error{ "Set::emplace" };
     }
 
-    bool erase(const Key &key) {
-        const std::size_t hash = hash_key(key);
+    iterator erase(const const_iterator iter) {
+        return policy_.erase(*iter);
+    }
 
-        if (policy_.erase(key, hash, equal_) != policy_.buckets().end()) {
-            return true;
+    iterator erase(const const_iterator first, const const_iterator last) {
+        iterator last_erased = first;
+
+        for (const auto &key : make_range(first, last)) {
+            last_erased = erase(key);
         }
 
-        return false;
+        return last_erased;
     }
 
-    [[nodiscard]] bool contains(const Key &key) const noexcept {
+    iterator erase(const Key &key) {
         const std::size_t hash = hash_key(key);
 
-        const auto iter = policy_.find(key, hash, equal_);
-
-        return iter != policy_.buckets().cend();
+        return policy_.erase(key, hash, equal_);
     }
 
-    template <typename U, typename UHasher>
-    [[nodiscard]] bool contains(U &&key, UHasher &&hasher) const noexcept {
+    template <typename U, typename H,
+              std::enable_if_t<IS_HASHER_FOR<H, U>, int> = 0>
+    iterator erase(U &&key, H &&hasher) {
         const std::size_t hash =
-            std::invoke(std::forward<UHasher>(hasher), std::forward<U>(key));
+            std::invoke(std::forward<H>(hasher), std::forward<U>(key));
 
-        const auto iter = policy_.find(std::forward<U>(key), hash, equal_);
-
-        return iter != policy_.buckets().cend();
-    }
-
-    void reserve(const size_type new_capacity) {
-        if (new_capacity * 2 < capacity()) {
-            return;
-        }
-
-        realloc_and_move(next_power_of_2(new_capacity * 2));
-    }
-
-    [[nodiscard]] double load_factor() const noexcept {
-        return static_cast<double>(size()) / static_cast<double>(capacity());
+        return policy_.erase(std::forward<U>(key), hash, equal_);
     }
 
     void swap(Set &other) {
@@ -177,40 +184,112 @@ public:
         adl_swap(policy_, other.policy_);
     }
 
+    [[nodiscard]] size_type count(const Key &key) const noexcept {
+        const std::size_t hash = hash_key(key);
+
+        const auto iter = policy_.find(key, hash, equal_);
+
+        return iter != policy_.cend() ? 1 : 0;
+    }
+
+    template <typename U, typename H,
+              std::enable_if_t<IS_HASHER_FOR<H, U>, int> = 0>
+    [[nodiscard]] size_type count(U &&key, H &&hasher) const noexcept {
+        const std::size_t hash =
+            std::invoke(std::forward<H>(hasher), std::forward<U>(key));
+
+        const auto iter = policy_.find(std::forward<U>(key), hash, equal_);
+
+        return iter != policy_.cend() ? 1 : 0;
+    }
+
+    [[nodiscard]] double load_factor() const noexcept {
+        return static_cast<double>(size()) / static_cast<double>(capacity());
+    }
+
+    void reserve(const size_type new_capacity) {
+        if (new_capacity < capacity()) {
+            return;
+        }
+
+        realloc_and_move(next_power_of_2(new_capacity * 2));
+    }
+
+    hasher hash_function() const {
+        return hasher_;
+    }
+
+    key_equal key_eq() const {
+        return equal_.equals;
+    }
+
+    iterator find(const Key &key) noexcept {
+        return std::as_const(*this).find(key);
+    }
+
+    const_iterator find(const Key &key) const noexcept {
+        const std::size_t hash = hash_key(key);
+
+        return policy_.find(key, hash, equal_);
+    }
+
+    template <typename U, typename H,
+              std::enable_if_t<IS_HASHER_FOR<H, U>, int> = 0>
+    const_iterator find(U &&key, H &&hasher) const noexcept {
+        const std::size_t hash = std::invoke(std::forward<H>(hasher),
+                                             std::forward<U>(key));
+
+        return policy_.find(std::forward<U>(key), hash, equal_);
+    }
+
+    friend bool operator==(const Set &lhs, const Set &rhs) noexcept {
+        for (const auto &key : lhs) {
+            if (rhs.find(key) == rhs.cend()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    friend bool operator!=(const Set &lhs, const Set &rhs) noexcept {
+        return !(lhs == rhs);
+    }
+
 private:
     using KeyAllocT = Allocator;
     using KeyTraitsT = std::allocator_traits<KeyAllocT>;
 
-    using BucketT = typename HashPolicy::BucketT;
-    using AllocT = typename KeyTraitsT::template rebind_alloc<BucketT>;
+    using BucketT = typename HashPolicy::bucket_type;
+    using AllocT =
+        typename KeyTraitsT::template rebind_alloc<BucketT>;
     using BucketEqualT = set::BucketEqual<BucketT, KeyEqual>;
-    using BucketSpanT = typename HashPolicy::SpanT;
+    using BucketViewT = typename HashPolicy::view;
 
     // realloc if empty or load factor > 1/2
     bool should_realloc() {
-        return buckets_.empty() || capacity() / (size() + 1) < 2;
+        return buckets_.empty() || size() + 1 > capacity();
     }
 
-    void realloc_and_move(size_type new_capacity) {
-        std::vector<BucketT, AllocT> new_buckets(new_capacity);
+    void realloc_and_move(const size_type new_capacity) {
+        std::vector<BucketT, AllocT> new_buckets(new_capacity * 2);
 
-        {
-            using std::swap;
-            swap(buckets_, new_buckets);
-        }
+        adl_swap(buckets_, new_buckets);
 
-        policy_.move_to(hasher_, span());
+        policy_.move_to(hasher_, view());
     }
 
     std::size_t hash_key(const Key &key) const noexcept {
         return std::invoke(hasher_, key);
     }
 
-    BucketSpanT span() noexcept {
-        const auto span_size =
-            static_cast<typename BucketSpanT::size_type>(buckets_.size());
+    BucketViewT view() noexcept {
+        const auto data =
+            static_cast<typename BucketViewT::pointer>(buckets_.data());
+        const auto size =
+            static_cast<typename BucketViewT::size_type>(buckets_.size());
 
-        return { buckets_.data(), span_size };
+        return { data, size };
     }
 
     size_type next_capacity() const noexcept {
@@ -227,7 +306,7 @@ private:
 
     Hash hasher_{ };
     BucketEqualT equal_{ KeyEqual{ } };
-    HashPolicy policy_{ span() };
+    HashPolicy policy_{ view() };
 };
 
 template <typename K, typename H, typename E, typename A, typename P>
