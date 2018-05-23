@@ -1,6 +1,7 @@
 #ifndef GREGJM_CONTAINERS_SET_LINEAR_PROBE_HPP
 #define GREGJM_CONTAINERS_SET_LINEAR_PROBE_HPP
 
+#include "array_view.hpp"
 #include "set/tombstone_bucket.hpp"
 #include "utility.hpp"
 
@@ -14,12 +15,58 @@
 #include <gsl/gsl>
 
 namespace gregjm::containers::set {
+namespace detail {
+
+template <typename K, typename E>
+struct IsEqualOrEmpty {
+    constexpr IsEqualOrEmpty(K &&key, E &&eq) noexcept
+    : key_{ std::forward<K>(key) }, eq_{ std::forward<E>(eq) } { }
+
+    constexpr IsEqualOrEmpty(const IsEqualOrEmpty &other) noexcept
+    : key_{ std::forward<K>(other.key_) },
+      eq_{ std::forward<E>(other.eq_) } { }
+
+    constexpr IsEqualOrEmpty(IsEqualOrEmpty &&other) noexcept
+    : key_{ std::forward<K>(other.key_) },
+      eq_{ std::forward<E>(other.eq_) } { }
+
+    template <
+        typename T,
+        std::enable_if_t<
+            IS_BINARY_PREDICATE<E, const T&, K>
+            || IS_BINARY_PREDICATE<E, K, const T&>,
+            int
+        > = 0
+    >
+    bool operator()(const TombstoneBucket<T> &bucket) {
+        if (bucket.is_empty()) {
+            return true;
+        } else if (!bucket.has_value()) {
+            return false;
+        }
+
+        if constexpr (IS_BINARY_PREDICATE<E, const T&, K>) {
+            return std::invoke(std::forward<E>(eq_), bucket.unwrap(),
+                               std::forward<K>(key_));
+        } else {
+            return std::invoke(std::forward<E>(eq_), std::forward<K>(key_),
+                               bucket.unwrap());
+        }
+    }
+
+private:
+    K &&key_;
+    E &&eq_;
+};
+
+} // namespace detail
 
 template <typename T>
 class LinearProbe;
 
 template <typename T>
 class LinearProbeIterator {
+public:
     friend LinearProbe<T>;
 
     using value_type = T;
@@ -39,13 +86,8 @@ class LinearProbeIterator {
     }
 
     LinearProbeIterator& operator++() {
-        if (traversed_ < num_occupied_ - 1 && base_ != end_) {
-            ++traversed_;
-            ++base_;
-            validate();
-        } else if (traversed_ >= num_occupied_ - 1) {
-            base_ = end_;
-        }
+        ++base_;
+        validate();
 
         return *this;
     }
@@ -69,19 +111,19 @@ class LinearProbeIterator {
     }
 
 private:
-    using UnderlyingT = typename LinearProbe<T>::SpanT::iterator;
+    using base_type = typename LinearProbe<T>::view::const_iterator;
 
-    LinearProbeIterator(const UnderlyingT current, const UnderlyingT end,
-                        const std::size_t occupied) noexcept
-    : base_{ current }, end_{ end },  num_occupied_{ occupied } { }
+    LinearProbeIterator(const base_type current, const base_type end) noexcept
+    : base_{ current }, end_{ end } {
+        validate();
+    }
 
     void validate() noexcept {
         for (; base_ != end_ && !base_->has_value(); ++base_) { }
     }
 
-    UnderlyingT base_;
-    UnderlyingT end_;
-    std::size_t traversed_ = 0;
+    base_type base_;
+    base_type end_;
     std::size_t num_occupied_;
 };
 
@@ -89,30 +131,28 @@ private:
 template <typename T>
 class LinearProbe {
 public:
-    using BucketT = TombstoneBucket<T>;
-    using SpanT = gsl::span<BucketT>;
-    using IteratorT = LinearProbeIterator<T>;
+    using bucket_type = TombstoneBucket<T>;
+    using view = ArrayView<bucket_type>;
+    using iterator = LinearProbeIterator<T>;
+    using const_iterator = iterator;
+    using size_type = std::make_unsigned_t<typename view::size_type>;
 
-    explicit LinearProbe(const SpanT buckets) noexcept
+    explicit LinearProbe(const view buckets) noexcept
     : buckets_{ buckets } { }
 
-    const SpanT& buckets() const noexcept {
-        return buckets_;
+    iterator begin() const noexcept {
+        return { buckets_.cbegin(), buckets_.cend() };
     }
 
-    IteratorT begin() const noexcept {
-        return { buckets_.cbegin(), buckets_.cend(), num_occupied() };
-    }
-
-    IteratorT cbegin() const noexcept {
+    const_iterator cbegin() const noexcept {
         return begin();
     }
 
-    IteratorT end() const noexcept {
-        return { buckets_.cend(), buckets_.cend(), num_occupied() };
+    iterator end() const noexcept {
+        return { buckets_.cend(), buckets_.cend() };
     }
 
-    IteratorT cend() const noexcept {
+    const_iterator cend() const noexcept {
         return end();
     }
 
@@ -120,106 +160,77 @@ public:
         return num_occupied_;
     }
 
-    template <
-        typename Key, typename Equal,
-        std::enable_if_t<std::is_invocable_v<Equal, Key, const T&>
-                         || std::is_invocable_v<Equal, const T&, Key>,
-                         int> = 0
-    >
-    typename SpanT::const_iterator
-    find(Key &&key, const std::size_t hash, Equal &&equal) const noexcept {
-        if (buckets_.empty()) {
-            return buckets_.cend();
+    void clear() noexcept {
+        for (auto &bucket : buckets_) {
+            bucket.set_empty();
         }
 
-        const std::size_t start_index = hash % num_buckets();
-        const auto start_iter =
-            buckets_.cbegin() + static_cast<SpanDiffT>(start_index);
-
-        const auto is_equal_or_empty = [&key, &equal](const BucketT &bucket) {
-            if (bucket.is_empty()) {
-                return true;
-            } else if (!bucket.has_value()) {
-                return false;
-            }
-
-            const auto &value = bucket.unwrap();
-
-            if constexpr (std::is_invocable_v<Equal, Key, const T&>) {
-                return std::invoke(std::forward<Equal>(equal),
-                                   std::forward<Key>(key), value);
-            } else {
-                return std::invoke(std::forward<Equal>(equal), value,
-                                   std::forward<Key>(key));
-            }
-        };
-
-        const auto first = std::find_if(start_iter, buckets_.cend(),
-                                        is_equal_or_empty);
-
-        if (first != buckets_.cend()) {
-            if (first->is_empty()) {
-                return buckets_.cend();
-            }
-
-            return first;
-        }
-
-        const auto second = std::find_if(buckets_.cbegin(), start_iter,
-                                         is_equal_or_empty);
-
-        if (second == start_iter || second->is_empty()) {
-            return buckets_.cend();
-        }
-
-        return second;
+        num_occupied_ = 0;
     }
 
-    typename SpanT::iterator
-    insert(T &&value, const std::size_t hash) {
+    template <typename K, typename E,
+              std::enable_if_t<IS_BINARY_PREDICATE<E, const T&, K>
+                              || IS_BINARY_PREDICATE<E, K, const T&>,
+                              int> = 0>
+    const_iterator find(K &&key, const std::size_t hash,
+                        E &&eq) const noexcept {
         if (buckets_.empty()) {
-            return buckets_.end();
+            return cend();
         }
 
-        const auto insert_iter = to_iter(find_insert(hash));
+        const auto found_iter =
+            view_iter_at(find_equal_or_empty(std::forward<K>(key), hash,
+                                             std::forward<E>(eq)));
+
+        if (found_iter == buckets_.cend() || found_iter->is_empty()) {
+            return cend();
+        }
+
+        return make_iterator(found_iter);
+    }
+
+    iterator insert(T &&value, const std::size_t hash) {
+        if (buckets_.empty()) {
+            return end();
+        }
+
+        const auto insert_iter = view_iter_at(find_first_valueless(hash));
 
         if (insert_iter == buckets_.end()) {
-            return buckets_.end();
+            return end();
         }
 
         insert_iter->emplace(std::move(value));
         ++num_occupied_;
-        return insert_iter;
+        return make_iterator(insert_iter);
     }
 
-    template <
-        typename Key, typename Equal,
-        std::enable_if_t<std::is_invocable_v<Equal, Key, const T&>
-                        || std::is_invocable_v<Equal, const T&, Key>,
-                        int> = 0
-    >
-    typename SpanT::iterator
-    erase(Key &&key, const std::size_t hash, Equal &&equal) {
+    template <typename K, typename E,
+              std::enable_if_t<IS_BINARY_PREDICATE<E, const T&, K>
+                              || IS_BINARY_PREDICATE<E, K, const T&>,
+                              int> = 0>
+    iterator erase(K &&key, const std::size_t hash, E &&eq) {
         if (buckets_.empty()) {
-            return buckets_.end();
+            return end();
         }
 
-        const auto delete_const_iter = find(std::forward<Key>(key), hash,
-                                            std::forward<Equal>(equal));
-        const auto delete_iter = to_iter(delete_const_iter);
+        const auto delete_iter =
+            view_iter_at(find_equal_or_empty(std::forward<K>(key), hash,
+                                             std::forward<E>(eq)));
 
-        if (delete_iter == buckets_.end()) {
-            return buckets_.end();
+        if (delete_iter == buckets_.end() || delete_iter->is_empty()) {
+            return end();
         }
 
         delete_iter->set_deleted();
         --num_occupied_;
-        return delete_iter;
+
+        return make_iterator(std::next(delete_iter));
     }
 
     template <typename Hasher,
               std::enable_if_t<IS_HASHER_FOR<Hasher, T>, int> = 0>
-    SpanT move_to(Hasher &&hasher, SpanT new_buckets) {
+    view move_to(Hasher &&hasher, view new_buckets) {
         LinearProbe new_policy{ new_buckets };
 
         for (auto &bucket : buckets_) {
@@ -246,47 +257,100 @@ public:
     }
 
 private:
-    using SpanDiffT = typename SpanT::iterator::difference_type;
+    using ViewIteratorT = typename view::iterator;
+    using ViewConstIteratorT = typename view::const_iterator;
+    using ViewDifferenceT = typename view::difference_type;
 
-    typename SpanT::iterator
-    to_iter(const typename SpanT::const_iterator iter) const noexcept {
-        const auto index = std::distance(buckets_.cbegin(), iter);
+    static constexpr inline size_type NPOS =
+        std::numeric_limits<size_type>::max();
 
-        return buckets_.begin() + index;
-    }
-
-    typename SpanT::const_iterator
-    find_insert(const std::size_t hash) const noexcept {
+    template <typename K, typename E,
+              std::enable_if_t<IS_BINARY_PREDICATE<E, const T&, K>
+                              || IS_BINARY_PREDICATE<E, K, const T&>,
+                              int> = 0>
+    size_type find_equal_or_empty(K &&key, const std::size_t hash,
+                                  E &&eq) const {
         const std::size_t start_index = hash % num_buckets();
         const auto start_iter =
-            buckets_.cbegin() + static_cast<SpanDiffT>(start_index);
+            buckets_.cbegin() + static_cast<ViewDifferenceT>(start_index);
 
+        detail::IsEqualOrEmpty<K, E> pred{ std::forward<K>(key),
+                                           std::forward<E>(eq) };
+
+        const auto first = std::find_if(start_iter, buckets_.cend(), pred);
+
+        if (first != buckets_.cend()) {
+            return view_iter_index(first);
+        }
+
+        const auto second = std::find_if(buckets_.cbegin(), start_iter, pred);
+
+        if (second == start_iter) {
+            return NPOS;
+        }
+
+        return view_iter_index(second);
+    }
+
+    size_type find_first_valueless(const std::size_t hash) const noexcept {
         const auto is_valueless =
-            [](const BucketT &bucket) { return !bucket.has_value(); };
+            [](const bucket_type &bucket) { return !bucket.has_value(); };
+
+        const std::size_t start_index = hash % num_buckets();
+        const auto start_iter =
+            buckets_.cbegin() + static_cast<ViewDifferenceT>(start_index);
 
         const auto first = std::find_if(start_iter, buckets_.cend(),
                                         is_valueless);
 
         if (first != buckets_.cend()) {
-            return first;
+            return view_iter_index(first);
         }
 
         const auto second = std::find_if(buckets_.cbegin(), start_iter,
                                          is_valueless);
 
         if (second == start_iter) {
+            return NPOS;
+        }
+
+        return view_iter_index(second);
+    }
+
+    size_type num_buckets() const noexcept {
+        return static_cast<size_type>(buckets_.size());
+    }
+
+    iterator make_iterator(const ViewConstIteratorT iter) const noexcept {
+        return { iter, buckets_.cend() };
+    }
+
+    size_type view_iter_index(const ViewIteratorT iter) noexcept {
+        return static_cast<size_type>(std::distance(buckets_.begin(), iter));
+    }
+
+    size_type view_iter_index(const ViewConstIteratorT iter) const noexcept {
+        return static_cast<size_type>(std::distance(buckets_.cbegin(), iter));
+    }
+
+    ViewIteratorT view_iter_at(const size_type index) noexcept {
+        if (index == NPOS) {
+            return buckets_.end();
+        }
+
+        return buckets_.begin() + static_cast<ViewDifferenceT>(index);
+    }
+
+    ViewConstIteratorT view_iter_at(const size_type index) const noexcept {
+        if (index == NPOS) {
             return buckets_.cend();
         }
 
-        return second;
+        return buckets_.cbegin() + static_cast<ViewDifferenceT>(index);
     }
 
-    std::size_t num_buckets() const noexcept {
-        return static_cast<std::size_t>(buckets_.size());
-    }
-
-    SpanT buckets_;
-    std::size_t num_occupied_ = 0;
+    view buckets_;
+    size_type num_occupied_ = 0;
 };
 
 template <typename T>
@@ -295,6 +359,5 @@ void swap(LinearProbe<T> &lhs, LinearProbe<T> &rhs) noexcept {
 }
     
 } // namespace gregjm::containers::set
-
 
 #endif
