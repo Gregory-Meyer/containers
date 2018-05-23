@@ -59,6 +59,18 @@ struct IsHasherFor
 template <typename T, typename U>
 constexpr inline bool IS_HASHER_FOR = IsHasherFor<T, U>::value;
 
+// equivalent to std::true_type if std::invoke(T&&, L&&, R&&) is valid
+template <typename T, typename L, typename R>
+struct IsBinaryPredicate
+: public std::conditional_t<
+    std::is_invocable_v<T, L, R>
+    && std::is_convertible_v<std::invoke_result_t<T, L, R>, bool>,
+    std::true_type, std::false_type
+> { };
+
+template <typename T, typename L, typename R>
+constexpr inline bool IS_BINARY_PREDICATE = IsBinaryPredicate<T, L, R>::value;
+
 } // namespace gregjm::containers
 
 #endif
