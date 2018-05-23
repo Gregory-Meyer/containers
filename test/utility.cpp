@@ -91,9 +91,9 @@ TEST_CASE("Range usage with istreams", "[Range][utility.hpp]") {
     CHECK_FALSE(even.has_size());
     CHECK_FALSE(odd.has_size());
 
-    static constexpr std::array<int, 2> even_exp = { { 0, 2 } };
+    const std::vector<int> even_exp = { { 0, 2 } };
     CHECK(std::equal(even.begin(), even.end(), even_exp.cbegin()));
 
-    static constexpr std::array<int, 0> odd_exp;
+    const std::vector<int> odd_exp;
     CHECK(std::equal(odd.begin(), odd.end(), odd_exp.cbegin()));
 }
