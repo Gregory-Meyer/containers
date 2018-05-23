@@ -98,6 +98,48 @@ noexcept(noexcept(lhs.swap(rhs))) {
     lhs.swap(rhs);
 }
 
+template <typename K, typename P>
+struct TombstoneEmptyOrPred {
+    constexpr TombstoneEmptyOrPred(K &&key, P &&pred) noexcept
+    : key_{ std::forward<K>(key) }, pred_{ std::forward<P>(pred) } { }
+
+    constexpr TombstoneEmptyOrPred(const TombstoneEmptyOrPred &other) noexcept
+    : key_{ std::forward<K>(other.key_) },
+      pred_{ std::forward<P>(other.pred_) } { }
+
+    constexpr TombstoneEmptyOrPred(TombstoneEmptyOrPred &&other) noexcept
+    : key_{ std::forward<K>(other.key_) },
+      pred_{ std::forward<P>(other.pred_) } { }
+
+    template <
+        typename T,
+        std::enable_if_t<
+            IS_BINARY_PREDICATE<P, const T&, K>
+            || IS_BINARY_PREDICATE<P, K, const T&>,
+            int
+        > = 0
+    >
+    bool operator()(const TombstoneBucket<T> &bucket) {
+        if (bucket.is_empty()) {
+            return true;
+        } else if (!bucket.has_value()) {
+            return false;
+        }
+
+        if constexpr (IS_BINARY_PREDICATE<P, const T&, K>) {
+            return std::invoke(std::forward<P>(pred_), bucket.unwrap(),
+                               std::forward<K>(key_));
+        } else {
+            return std::invoke(std::forward<P>(pred_), std::forward<K>(key_),
+                               bucket.unwrap());
+        }
+    }
+
+private:
+    K &&key_;
+    P &&pred_;
+};
+
 } // namespace gregjm::containers::set
 
 #endif

@@ -14,51 +14,6 @@
 #include <gsl/gsl>
 
 namespace gregjm::containers::set {
-namespace detail {
-
-template <typename K, typename E>
-struct IsEqualOrEmpty {
-    constexpr IsEqualOrEmpty(K &&key, E &&eq) noexcept
-    : key_{ std::forward<K>(key) }, eq_{ std::forward<E>(eq) } { }
-
-    constexpr IsEqualOrEmpty(const IsEqualOrEmpty &other) noexcept
-    : key_{ std::forward<K>(other.key_) },
-      eq_{ std::forward<E>(other.eq_) } { }
-
-    constexpr IsEqualOrEmpty(IsEqualOrEmpty &&other) noexcept
-    : key_{ std::forward<K>(other.key_) },
-      eq_{ std::forward<E>(other.eq_) } { }
-
-    template <
-        typename T,
-        std::enable_if_t<
-            IS_BINARY_PREDICATE<E, const T&, K>
-            || IS_BINARY_PREDICATE<E, K, const T&>,
-            int
-        > = 0
-    >
-    bool operator()(const TombstoneBucket<T> &bucket) {
-        if (bucket.is_empty()) {
-            return true;
-        } else if (!bucket.has_value()) {
-            return false;
-        }
-
-        if constexpr (IS_BINARY_PREDICATE<E, const T&, K>) {
-            return std::invoke(std::forward<E>(eq_), bucket.unwrap(),
-                               std::forward<K>(key_));
-        } else {
-            return std::invoke(std::forward<E>(eq_), std::forward<K>(key_),
-                               bucket.unwrap());
-        }
-    }
-
-private:
-    K &&key_;
-    E &&eq_;
-};
-
-} // namespace detail
 
 template <typename T>
 class LinearProbe;
@@ -135,6 +90,7 @@ public:
     using iterator = LinearProbeIterator<T>;
     using const_iterator = iterator;
     using size_type = std::make_unsigned_t<typename view::size_type>;
+    using difference_type = std::make_signed_t<size_type>;
 
     explicit LinearProbe(const view buckets) noexcept
     : buckets_{ buckets } { }
@@ -273,8 +229,8 @@ private:
         const auto start_iter =
             buckets_.cbegin() + static_cast<ViewDifferenceT>(start_index);
 
-        detail::IsEqualOrEmpty<K, E> pred{ std::forward<K>(key),
-                                           std::forward<E>(eq) };
+        TombstoneEmptyOrPred<K, E> pred{ std::forward<K>(key),
+                                         std::forward<E>(eq) };
 
         const auto first = std::find_if(start_iter, buckets_.cend(), pred);
 
