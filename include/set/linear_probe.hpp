@@ -1,7 +1,6 @@
 #ifndef GREGJM_CONTAINERS_SET_LINEAR_PROBE_HPP
 #define GREGJM_CONTAINERS_SET_LINEAR_PROBE_HPP
 
-#include "array_view.hpp"
 #include "set/tombstone_bucket.hpp"
 #include "utility.hpp"
 
@@ -132,7 +131,7 @@ template <typename T>
 class LinearProbe {
 public:
     using bucket_type = TombstoneBucket<T>;
-    using view = ArrayView<bucket_type>;
+    using view = gsl::span<bucket_type>;
     using iterator = LinearProbeIterator<T>;
     using const_iterator = iterator;
     using size_type = std::make_unsigned_t<typename view::size_type>;
@@ -259,7 +258,7 @@ public:
 private:
     using ViewIteratorT = typename view::iterator;
     using ViewConstIteratorT = typename view::const_iterator;
-    using ViewDifferenceT = typename view::difference_type;
+    using ViewDifferenceT = typename view::iterator::difference_type;
 
     static constexpr inline size_type NPOS =
         std::numeric_limits<size_type>::max();
