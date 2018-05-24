@@ -97,3 +97,12 @@ TEST_CASE("Range usage with istreams", "[Range][utility.hpp]") {
     const std::vector<int> odd_exp;
     CHECK(std::equal(odd.begin(), odd.end(), odd_exp.cbegin()));
 }
+
+TEST_CASE("enumerate", "[Enumerate][utility.hpp]") {
+    const std::vector<std::string> strings{ "foo", "bar", "baz", "alice" };
+
+    for ([[maybe_unused]] auto &&[i, v] : make_enumerate(strings)) {
+        CHECK(strings[i] == v);
+        CHECK(&v == &strings[i]);
+    }
+}
