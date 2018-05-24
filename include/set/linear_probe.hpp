@@ -40,8 +40,10 @@ public:
     }
 
     LinearProbeIterator& operator++() {
-        ++base_;
-        validate();
+        if (base_ != end_) {
+            ++base_;
+            validate();
+        }
 
         return *this;
     }
@@ -54,13 +56,15 @@ public:
         return to_return;
     }
 
-    [[nodiscard]] friend bool operator==(const LinearProbeIterator &lhs,
-                           const LinearProbeIterator &rhs) noexcept {
+    [[nodiscard]] friend bool operator==(
+        const LinearProbeIterator &lhs, const LinearProbeIterator &rhs
+    ) noexcept {
         return lhs.base_ == rhs.base_;
     }
 
-    [[nodiscard]] friend bool operator!=(const LinearProbeIterator &lhs,
-                           const LinearProbeIterator &rhs) noexcept {
+    [[nodiscard]] friend bool operator!=(
+        const LinearProbeIterator &lhs, const LinearProbeIterator &rhs
+    ) noexcept {
         return lhs.base_ != rhs.base_;
     }
 
