@@ -168,3 +168,20 @@ TEST_CASE("clearing", "[Set]") {
     CHECK(numbers.find(2) == numbers.cend());
     CHECK(numbers.find(3) == numbers.cend());
 }
+
+TEST_CASE("Set range insertion", "[Set]") {
+    Set<int> numbers{ 0, 1, 2, 3 };
+    const std::vector<int> to_insert{ 4, 5, 6, 7 };
+
+    numbers.insert(to_insert.cbegin(), to_insert.cend());
+
+    CHECK(numbers.size() == 8);
+    CHECK(numbers.find(0) != numbers.cend());
+    CHECK(numbers.find(1) != numbers.cend());
+    CHECK(numbers.find(2) != numbers.cend());
+    CHECK(numbers.find(3) != numbers.cend());
+    CHECK(numbers.find(4) != numbers.cend());
+    CHECK(numbers.find(5) != numbers.cend());
+    CHECK(numbers.find(6) != numbers.cend());
+    CHECK(numbers.find(7) != numbers.cend());
+}
