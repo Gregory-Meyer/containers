@@ -31,11 +31,11 @@ public:
 
     LinearProbeIterator() = default;
 
-    reference operator*() const {
+    [[nodiscard]] reference operator*() const {
         return base_->unwrap();
     }
 
-    pointer operator->() const {
+    [[nodiscard]] pointer operator->() const {
         return std::addressof(**this);
     }
 
@@ -54,12 +54,12 @@ public:
         return to_return;
     }
 
-    friend bool operator==(const LinearProbeIterator &lhs,
+    [[nodiscard]] friend bool operator==(const LinearProbeIterator &lhs,
                            const LinearProbeIterator &rhs) noexcept {
         return lhs.base_ == rhs.base_;
     }
 
-    friend bool operator!=(const LinearProbeIterator &lhs,
+    [[nodiscard]] friend bool operator!=(const LinearProbeIterator &lhs,
                            const LinearProbeIterator &rhs) noexcept {
         return lhs.base_ != rhs.base_;
     }
@@ -95,23 +95,23 @@ public:
     explicit LinearProbe(const view buckets) noexcept
     : buckets_{ buckets } { }
 
-    iterator begin() const noexcept {
+    [[nodiscard]] iterator begin() const noexcept {
         return { buckets_.cbegin(), buckets_.cend() };
     }
 
-    const_iterator cbegin() const noexcept {
+    [[nodiscard]] const_iterator cbegin() const noexcept {
         return begin();
     }
 
-    iterator end() const noexcept {
+    [[nodiscard]] iterator end() const noexcept {
         return { buckets_.cend(), buckets_.cend() };
     }
 
-    const_iterator cend() const noexcept {
+    [[nodiscard]] const_iterator cend() const noexcept {
         return end();
     }
 
-    size_type num_occupied() const noexcept {
+    [[nodiscard]] size_type num_occupied() const noexcept {
         return num_occupied_;
     }
 
@@ -127,8 +127,8 @@ public:
               std::enable_if_t<IS_BINARY_PREDICATE<E, const T&, K>
                               || IS_BINARY_PREDICATE<E, K, const T&>,
                               int> = 0>
-    const_iterator find(K &&key, const std::size_t hash,
-                        E &&eq) const noexcept {
+    [[nodiscard]] const_iterator find(K &&key, const std::size_t hash,
+                                      E &&eq) const noexcept {
         if (buckets_.empty()) {
             return cend();
         }
@@ -223,8 +223,8 @@ private:
               std::enable_if_t<IS_BINARY_PREDICATE<E, const T&, K>
                               || IS_BINARY_PREDICATE<E, K, const T&>,
                               int> = 0>
-    size_type find_equal_or_empty(K &&key, const std::size_t hash,
-                                  E &&eq) const {
+    [[nodiscard]] size_type find_equal_or_empty(K &&key, const std::size_t hash,
+                                                E &&eq) const {
         const std::size_t start_index = hash % num_buckets();
         const auto start_iter =
             buckets_.cbegin() + static_cast<ViewDifferenceT>(start_index);
@@ -247,7 +247,8 @@ private:
         return view_iter_index(second);
     }
 
-    size_type find_first_valueless(const std::size_t hash) const noexcept {
+    [[nodiscard]] size_type
+    find_first_valueless(const std::size_t hash) const noexcept {
         const auto is_valueless =
             [](const bucket_type &bucket) { return !bucket.has_value(); };
 
@@ -272,23 +273,25 @@ private:
         return view_iter_index(second);
     }
 
-    size_type num_buckets() const noexcept {
+    [[nodiscard]] size_type num_buckets() const noexcept {
         return static_cast<size_type>(buckets_.size());
     }
 
-    iterator make_iterator(const ViewConstIteratorT iter) const noexcept {
+    [[nodiscard]] iterator
+    make_iterator(const ViewConstIteratorT iter) const noexcept {
         return { iter, buckets_.cend() };
     }
 
-    size_type view_iter_index(const ViewIteratorT iter) noexcept {
+    [[nodiscard]] size_type view_iter_index(const ViewIteratorT iter) noexcept {
         return static_cast<size_type>(std::distance(buckets_.begin(), iter));
     }
 
-    size_type view_iter_index(const ViewConstIteratorT iter) const noexcept {
+    [[nodiscard]] size_type
+    view_iter_index(const ViewConstIteratorT iter) const noexcept {
         return static_cast<size_type>(std::distance(buckets_.cbegin(), iter));
     }
 
-    ViewIteratorT view_iter_at(const size_type index) noexcept {
+    [[nodiscard]] ViewIteratorT view_iter_at(const size_type index) noexcept {
         if (index == NPOS) {
             return buckets_.end();
         }
@@ -296,7 +299,8 @@ private:
         return buckets_.begin() + static_cast<ViewDifferenceT>(index);
     }
 
-    ViewConstIteratorT view_iter_at(const size_type index) const noexcept {
+    [[nodiscard]] ViewConstIteratorT
+    view_iter_at(const size_type index) const noexcept {
         if (index == NPOS) {
             return buckets_.cend();
         }

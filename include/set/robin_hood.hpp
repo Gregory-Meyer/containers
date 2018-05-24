@@ -31,15 +31,15 @@ public:
 
     explicit RobinHood(const view buckets) noexcept;
 
-    iterator begin() const noexcept;
+    [[nodiscard]] iterator begin() const noexcept;
 
-    const_iterator cbegin() const noexcept;
+    [[nodiscard]] const_iterator cbegin() const noexcept;
 
-    iterator end() const noexcept;
+    [[nodiscard]] iterator end() const noexcept;
 
-    const_iterator cend() const noexcept;
+    [[nodiscard]] const_iterator cend() const noexcept;
 
-    size_type num_occupied() const noexcept;
+    [[nodiscard]] size_type num_occupied() const noexcept;
 
     void clear() noexcept;
 
@@ -47,8 +47,8 @@ public:
               std::enable_if_t<IS_BINARY_PREDICATE<E, const T&, K>
                               || IS_BINARY_PREDICATE<E, K, const T&>,
                               int> = 0>
-    const_iterator find(K &&key, const std::size_t hash,
-                        E &&eq) const noexcept;
+    [[nodiscard]] const_iterator find(K &&key, const std::size_t hash,
+                                      E &&eq) const noexcept;
 
     iterator insert(T &&value, const std::size_t hash);
 
