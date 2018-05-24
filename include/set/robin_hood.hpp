@@ -14,61 +14,63 @@ template <typename T>
 class RobinHood;
 
 template <typename T>
-class RobinHoodIterator;
+class RobinHoodIterator {
+public:
+    friend RobinHood<T>;
+};
 
 template <typename T>
 class RobinHood {
 public:
-    using BucketT = DibBucket<T>;
-    using SpanT = gsl::span<BucketT>;
-    using IteratorT = RobinHoodIterator<T>;
+    using bucket_type = DibBucket<T>;
+    using view = gsl::span<bucket_type>;
+    using iterator = RobinHoodIterator<T>;
+    using const_iterator = iterator;
+    using size_type = std::make_unsigned_t<typename view::size_type>;
+    using difference_type = std::make_signed_t<size_type>;
 
-    explicit RobinHood(const SpanT buckets) noexcept
-    : buckets_{ buckets } { }
+    explicit RobinHood(const view buckets) noexcept;
 
-    const SpanT& buckets() const noexcept {
-        return buckets_;
-    }
+    iterator begin() const noexcept;
 
-    IteratorT begin() const noexcept;
+    const_iterator cbegin() const noexcept;
 
-    IteratorT cbegin() const noexcept;
+    iterator end() const noexcept;
 
-    IteratorT end() const noexcept;
+    const_iterator cend() const noexcept;
 
-    IteratorT cend() const noexcept;
+    size_type num_occupied() const noexcept;
 
-    std::size_t num_occupied() const noexcept;
+    void clear() noexcept;
 
-    template <
-        typename Key, typename Equal,
-        std::enable_if_t<std::is_invocable_v<Equal, Key, const T&>
-                         || std::is_invocable_v<Equal, const T&, Key>,
-                         int> = 0
-    >
-    typename SpanT::const_iterator
-    find(Key &&key, const std::size_t hash, Equal &&equal) const noexcept;
+    template <typename K, typename E,
+              std::enable_if_t<IS_BINARY_PREDICATE<E, const T&, K>
+                              || IS_BINARY_PREDICATE<E, K, const T&>,
+                              int> = 0>
+    const_iterator find(K &&key, const std::size_t hash,
+                        E &&eq) const noexcept;
 
-    typename SpanT::iterator
-    insert(T &&value, const std::size_t hash);
+    iterator insert(T &&value, const std::size_t hash);
 
-    template <
-        typename Key, typename Equal,
-        std::enable_if_t<std::is_invocable_v<Equal, Key, const T&>
-                        || std::is_invocable_v<Equal, const T&, Key>,
-                        int> = 0
-    >
-    typename SpanT::iterator
-    erase(Key &&key, const std::size_t hash, Equal &&equal);
+    template <typename K, typename E,
+              std::enable_if_t<IS_BINARY_PREDICATE<E, const T&, K>
+                              || IS_BINARY_PREDICATE<E, K, const T&>,
+                              int> = 0>
+    iterator erase(K &&key, const std::size_t hash, E &&eq);
 
     template <typename Hasher,
               std::enable_if_t<IS_HASHER_FOR<Hasher, T>, int> = 0>
-    SpanT move_to(Hasher &&hasher, SpanT new_buckets);
+    view move_to(Hasher &&hasher, view new_buckets);
+
+    void swap(RobinHood &other) noexcept;
 
 private:
-    SpanT buckets_;
-    std::size_t num_occupied_;
+    view buckets_;
+    size_type num_occupied_;
 };
+
+template <typename T>
+void swap(RobinHood<T> &lhs, RobinHood<T> &rhs) noexcept;
 
 } // namespace gregjm::containers::set
 

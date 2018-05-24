@@ -111,7 +111,7 @@ public:
         return end();
     }
 
-    std::size_t num_occupied() const noexcept {
+    size_type num_occupied() const noexcept {
         return num_occupied_;
     }
 
